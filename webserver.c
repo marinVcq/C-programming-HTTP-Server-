@@ -130,7 +130,7 @@ void report(SOCKADDR_IN *serverAdress)
 }
 void handle_connection(SOCKET clientSocket, SOCKADDR_IN *clientAddr_ptr)
 {
-    unsigned char *ptr, request[500], ressource[255];
+    unsigned char *ptr, request[500], route[255];
     int length;
     FILE *file;
 
@@ -167,71 +167,73 @@ void handle_connection(SOCKET clientSocket, SOCKADDR_IN *clientAddr_ptr)
         }
         else
         {
-            // Handle Valid request
+            // Valid ptr pointing to ressource name or root
             if (ptr[strlen(ptr) - 1] == '/')
-            {
-                // add the index file
                 strcat(ptr, "index.html");
-                strcpy(ressource, WEBROOT); // begin ressource with webroot path
-                strcat(ressource, ptr);
-                printf("ressouce path: %s\n", ressource);
-                file = fopen(ressource, "r");
-                if (file == NULL)
+
+            strcpy(route, WEBROOT);                // begin ressource with webroot path (route = './webroot')
+            strcat(route, ptr);                    // Add the ressource requested by client
+            printf("Ressource path: %s\n", route); // Check the route
+
+            // Notice that in linux 'r' and 'rb' are the same
+            // in windows default reading is in text mode so we need to set in binary mode with 'rb
+            file = fopen(route, "rb");             // Try to open stream for reading
+            if (file == NULL)                      // File not found
+            {
+                printf("\t404 Not Found\n");
+                int iResult = send(clientSocket, "HTTP/1.0 404 NOT FOUND\r\n<html><head><title>404 Not Found</title></head>", 150, 0);
+                if (iResult == SOCKET_ERROR)
                 {
-                    printf("\t404 Not Found\n");
-                    int iResult = send(clientSocket, "HTTP/1.0 404 NOT FOUND\r\n<html><head><title>404 Not Found</title></head>", 150, 0);
+                    printf("send failed: %d\n", WSAGetLastError());
+                    closesocket(clientSocket);
+                    WSACleanup();
+                }
+            }
+            else
+            {
+                // File exist so serve it up
+                printf("\t\nClient GET REQUEST on: %s -- Status: 200\n", route);
+
+                if (ptr == request + 4)
+                {
+
+                    // It's a GET
+                    // Get number of bytes of the ressource requested
+                    fseek(file, 0L, SEEK_END);
+                    int numbytes = ftell(file);
+                    // Reset the file position indicator
+                    fseek(file, 0L, SEEK_SET);
+
+                    // Allocate memory for the buffer char pointer
+                    ptr = (unsigned char *)malloc(numbytes);
+
+                    // Check for ERROR
+                    if (ptr == NULL)
+                    {
+                        fclose(file);
+                        closesocket(clientSocket);
+                        WSACleanup();
+                    }
+                    // Copy file into buffer
+                    fread(ptr, sizeof(char), numbytes, file);
+                    ptr[numbytes] = '\0';
+                    fclose(file);
+
+                    // Send to client
+                    int iResult = send(clientSocket, ptr, numbytes, 0);
                     if (iResult == SOCKET_ERROR)
                     {
                         printf("send failed: %d\n", WSAGetLastError());
                         closesocket(clientSocket);
                         WSACleanup();
                     }
-                }
-                else
-                {
-                    printf("\t\nOpening the ressource: %s\n", ressource);
-                    printf(" 200 OK\n");
-                    if (ptr == request + 4)
+                    else
                     {
-                        // get the number of bytes of the ressource
-                        fseek(file, 0L, SEEK_END);
-                        int numbytes = ftell(file);
-
-                        // Reset the file position indicator
-                        fseek(file, 0L, SEEK_SET);
-
-                        // Allocate memory for the buffer char pointer
-                        ptr = (char *)calloc(numbytes, sizeof(char));
-                        // check for ERROR
-                        if (ptr == NULL)
-                        {
-                            fclose(file);
-                            closesocket(clientSocket);
-                            WSACleanup();
-                        }
-
-                        // Copy all the file into the buffer
-                        fread(ptr, sizeof(char), numbytes, file);
+                        printf("Send Ressource succesfully!\n");
+                        printf("Numbytes size = %d\n", numbytes);
+                        // printf("HTML content: %s\n", ptr);
+                        free(ptr);
                         fclose(file);
-
-                        // Confirm reading success
-                        printf("buffer contains HTML text\n");
-
-                        // Send to client
-                        int iResult = send(clientSocket, ptr, (int)strlen(ptr), 0);
-                        if (iResult == SOCKET_ERROR)
-                        {
-                            printf("send failed: %d\n", WSAGetLastError());
-                            closesocket(clientSocket);
-                            WSACleanup();
-                        }
-                        else
-                        {
-                            printf("Send HTML succesfully!\n");
-                            printf("HTML content: %s\n", ptr);
-                            free(ptr);
-                            fclose(file);
-                        }
                     }
                     closesocket(clientSocket);
                 }

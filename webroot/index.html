@@ -4,37 +4,39 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-
-<style>
-    *{
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-
-    }
-    body {
-        background-color: rgb(33,33,33);
-        display: flex;
-        justify-content: center;
-        flex-direction: column;
-        align-items: center;
-        width: 100vw;
-        height: 100vh;
-    }
-    #screen{
-        width: 800px;
-        height: 600px;
-        background-color: black;
-    }
-</style>
-
+    <link rel="stylesheet" href="style.css">
+    <title>Http Server from Scratch</title>
 </head>
 <body>
-    <div id="screen">
+    <header>
+        <h1>HTTP server from scratch</h1>
+        <h2>Build your own webServer from Scratch With winsock2 library and C programming</h2>        
+    </header>
 
-    </div>
-    <svg viewBox="0 0 40 5"><path d="M0 0 Q20 5, 40 0"/></svg>
+    <section id="main">
+        <div id="app">
+            <div id="screenBuffer">
+                <div class="scanline"></div>
+                <p>Lorem ipsum dolor sit amet.</p>
+            </div>
+            <img src="crt-monitor.png" alt="monitor image" id="monitor"/>
 
+            <div id="led"></div>
+        </div>
+
+        <div id="text">
+            <h3>Le Modèle client-serveur</h3>
+            <p>Vous naviguez sur le Web grace à votre navigateur. Les pages Webs sont alors stockés sur des machines </p>
+            <p class="textBlock">
+                <ul>
+                    <li>Programming language: C</li>
+                    <li>Parse HTTP Requests and send back replies</li>
+                    <li>Progr</li>
+
+                </ul>
+            </p>
+            <img src="vault_boy1.png" alt="vault_boy" id="vault">
+        </div>
+    </section>
 </body>
 </html>

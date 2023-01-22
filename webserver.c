@@ -6,46 +6,49 @@
 #include <string.h>
 #include <fcntl.h>
 
-#define DEFAULT_PORT 80
+#define PORT 80
 #define WEBROOT "./webroot"
-#define MAX_BUFFER_SIZE 1024
+#define BUFFER_SIZE 1024
 #define BACKLOG 10
 
-void setHttpHeader(char httpHeader[])
-{
-    // File object to return to the client
-    FILE *htmlData = fopen("index.html", "r");
+void handle_connection(SOCKET socket, SOCKADDR_IN *clientAddr);
+void report(SOCKADDR_IN *serverAdress);
 
-    char line[100];
-    char responseData[8000];
-    while (fgets(line, sizeof(line), htmlData) != NULL)
-    {
-        strcat(responseData, line);
-    }
-    strcat(httpHeader, responseData);
+int send_header(SOCKET socket, char *buffer)
+{
+    int numbytes;
+    int buffer_size = strlen(buffer);
+
+    numbytes = send(socket, buffer, buffer_size, 0);
+    if (numbytes == SOCKET_ERROR)
+        return 0;
+
+    printf("Send Header succesfully: %s\n", buffer);
+    return 1;
 }
 
-void handle_connection(SOCKET socket, SOCKADDR_IN *clientAddr);
-
-void report(SOCKADDR_IN *serverAdress);
+void reset_connection(SOCKET socket, SOCKADDR_IN serverAddr)
+{
+    // blablalba
+}
 
 int main(void)
 {
-    WSADATA wsaData;
-    SOCKET serverSocket;
-    SOCKET clientSocket;
-    SOCKADDR_IN serverAdress, clientAdress;
+    WSADATA wsaData = {0};
+    SOCKET serverSocket = INVALID_SOCKET;
+    SOCKET clientSocket = INVALID_SOCKET;
+    SOCKADDR_IN serverAdress, clientAdress = {0};
     WORD wVersionRequested = MAKEWORD(2, 2);
-    BOOL Continue = TRUE;
     BOOL listening = FALSE;
-
-    char httpHeader[8000] = "HTTP/1.0 200 OK\r\n\n";
+    socklen_t sin_size = sizeof(SOCKADDR_IN);
 
     int gAdresseFamily = AF_UNSPEC,
         gSocketType = SOCK_STREAM,
         gProtocol = IPPROTO_TCP;
 
     int err;
+    BOOL iOptVal = TRUE;
+    int iOptLen = sizeof(BOOL);
 
     // Socket setup: Initialize winsock2
     err = WSAStartup(wVersionRequested, &wsaData);
@@ -69,9 +72,25 @@ int main(void)
         printf("Create New socket succesfully!\n");
     }
 
+    // Set socket option
+    err = getsockopt(serverSocket, SOL_SOCKET, SO_KEEPALIVE, (char *)&iOptVal, &iOptLen);
+    if (err == SOCKET_ERROR)
+    {
+        wprintf(L"getsockopt for SO_KEEPALIVE failed with error: %u\n", WSAGetLastError());
+    }
+    else
+        wprintf(L"SO_KEEPALIVE is ON\n");
+    err = getsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, (char *)&iOptVal, &iOptLen);
+    if (err == SOCKET_ERROR)
+    {
+        wprintf(L"getsockopt for SO_KEEPALIVE failed with error: %u\n", WSAGetLastError());
+    }
+    else
+        wprintf(L"SO_REUSEADDR is ON\n");
+
     // Construct local adress structure
     serverAdress.sin_family = AF_INET;
-    serverAdress.sin_port = htons(DEFAULT_PORT);
+    serverAdress.sin_port = htons(PORT);
     serverAdress.sin_addr.s_addr = inet_addr("127.0.0.1"); // htonl(INADDR_LOOPBACK);
     ZeroMemory(&serverAdress.sin_zero, 8);
 
@@ -85,7 +104,7 @@ int main(void)
     }
 
     // waiting the connection
-    if (listen(serverSocket, 5) == SOCKET_ERROR)
+    if (listen(serverSocket, 255) == SOCKET_ERROR)
     {
         fprintf(stderr, "listen() failed with error %d\n", WSAGetLastError());
         WSACleanup();
@@ -95,17 +114,19 @@ int main(void)
     {
         listening = TRUE;
         report(&serverAdress);
-        setHttpHeader(httpHeader);
+        // setHttpHeader(httpHeader);
     }
 
     // Wait for connection, create and connected socket if a connection is pending
     while (listening)
     {
-        socklen_t sin_size = sizeof(SOCKADDR_IN);
+        Sleep(1);
         clientSocket = accept(serverSocket, (SOCKADDR *)&clientAdress, &sin_size);
         handle_connection(clientSocket, &clientAdress);
-        // printf("Record connection\n");
+        shutdown(clientSocket, SD_BOTH);
         closesocket(clientSocket);
+        // closesocket(serverSocket);
+        // reset_connection(serverSocket, serverAdress);
     }
 
     return 0;
@@ -131,34 +152,30 @@ void report(SOCKADDR_IN *serverAdress)
 void handle_connection(SOCKET clientSocket, SOCKADDR_IN *clientAddr_ptr)
 {
     unsigned char *ptr, request[500], route[255];
+    char *httpHeader;
     int length;
     FILE *file;
 
     length = recv(clientSocket, request, sizeof(request), 0);
-
-    printf("Got request from %s:%d\t -- request: %s\n", inet_ntoa(clientAddr_ptr->sin_addr), ntohs(clientAddr_ptr->sin_port), request);
-
-    ptr = strstr(request, " HTTP/"); // Search for valid looking request
+    ptr = strstr(request, "HTTP/"); // Search for valid looking request
+    // printf("Got request from %s:%d\t -- request: %s\n", inet_ntoa(clientAddr_ptr->sin_addr), ntohs(clientAddr_ptr->sin_port), request);
 
     if (ptr == NULL)
-    {
         printf("NOT AN HTTP REQUEST!\n");
-    }
     else
     {
         *ptr = 0;
         ptr = NULL; // Set pointer to NULL (flag for bad request)
-        printf("THE REQUEST IS: %s \n", request);
+
         if (strncmp(request, "GET ", 4) == 0)
-        { // It's a GET request
-            printf("THIS IS A GET REQUEST   \n");
+        {
             ptr = request + 4; // pointer point now to the URL
+            printf("my pointer on GET: %s\n\nmy pointer size: %d\n\n", ptr, strlen(ptr));
+            ptr[strlen(ptr) - 1] = '\0';
         }
-        if (strcmp(request, "HEAD") == 0)
-        { // Its an HEAD request
-            printf("THIS IS A GET REQUEST   \n");
+
+        if (strncmp(request, "HEAD", 5) == 0)
             ptr = request + 5; // pointer point now to the URL
-        }
         if (ptr == NULL)
         {
             // Unrecognized request
@@ -168,17 +185,16 @@ void handle_connection(SOCKET clientSocket, SOCKADDR_IN *clientAddr_ptr)
         else
         {
             // Valid ptr pointing to ressource name or root
-            if (ptr[strlen(ptr) - 1] == '/')
+            if (ptr[strlen(ptr) - 1] == '/' || ptr[strlen(ptr) - 1] == ' ')
                 strcat(ptr, "index.html");
 
             strcpy(route, WEBROOT);                // begin ressource with webroot path (route = './webroot')
             strcat(route, ptr);                    // Add the ressource requested by client
             printf("Ressource path: %s\n", route); // Check the route
 
-            // Notice that in linux 'r' and 'rb' are the same
-            // in windows default reading is in text mode so we need to set in binary mode with 'rb
-            file = fopen(route, "rb");             // Try to open stream for reading
-            if (file == NULL)                      // File not found
+            // Try to open stream for reading
+            file = fopen(route, "rb");
+            if (file == NULL)
             {
                 printf("\t404 Not Found\n");
                 int iResult = send(clientSocket, "HTTP/1.0 404 NOT FOUND\r\n<html><head><title>404 Not Found</title></head>", 150, 0);
@@ -191,35 +207,35 @@ void handle_connection(SOCKET clientSocket, SOCKADDR_IN *clientAddr_ptr)
             }
             else
             {
-                // File exist so serve it up
-                printf("\t\nClient GET REQUEST on: %s -- Status: 200\n", route);
 
                 if (ptr == request + 4)
                 {
+                    // File exist so serve it up
+                    printf("Status 200 for ressource: %s\n", route);
 
-                    // It's a GET
                     // Get number of bytes of the ressource requested
                     fseek(file, 0L, SEEK_END);
                     int numbytes = ftell(file);
                     // Reset the file position indicator
                     fseek(file, 0L, SEEK_SET);
 
-                    // Allocate memory for the buffer char pointer
+                    // Allocate memory for htmlData and HttpHeader
                     ptr = (unsigned char *)malloc(numbytes);
 
                     // Check for ERROR
-                    if (ptr == NULL)
+                    if (ptr == NULL || httpHeader == NULL)
                     {
+                        printf("allocation error..\n");
                         fclose(file);
                         closesocket(clientSocket);
                         WSACleanup();
                     }
+
                     // Copy file into buffer
                     fread(ptr, sizeof(char), numbytes, file);
-                    ptr[numbytes] = '\0';
                     fclose(file);
 
-                    // Send to client
+                    // Send Body
                     int iResult = send(clientSocket, ptr, numbytes, 0);
                     if (iResult == SOCKET_ERROR)
                     {
@@ -229,13 +245,9 @@ void handle_connection(SOCKET clientSocket, SOCKADDR_IN *clientAddr_ptr)
                     }
                     else
                     {
-                        printf("Send Ressource succesfully!\n");
-                        printf("Numbytes size = %d\n", numbytes);
-                        // printf("HTML content: %s\n", ptr);
                         free(ptr);
                         fclose(file);
                     }
-                    closesocket(clientSocket);
                 }
             }
         }
